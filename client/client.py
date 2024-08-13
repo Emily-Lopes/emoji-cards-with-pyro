@@ -1,7 +1,9 @@
 import Pyro5.api
 
+server_app = Pyro5.api.Proxy("PYRONAME:server")
+print(server_app) 
+
 def criar_conta(username, senha):
-    server_app = Pyro5.api.Proxy("PYRONAME:emojicards.server")
     try:
         resultado = server_app.criar_conta(username, senha)
         print(resultado)

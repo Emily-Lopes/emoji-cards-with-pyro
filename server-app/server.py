@@ -1,13 +1,12 @@
 import Pyro5.api
-from funcionalidades import *
+# from funcionalidades import *
 
-db_server = Pyro5.api.Proxy("PYRONAME:emojicards.dbserver")
+db_server = Pyro5.api.Proxy("PYRONAME:dbserver")
+print(db_server) 
 
 @Pyro5.api.expose
-class GameServer:
+class ServerApp:
     def criar_conta(self, username, senha):
-        # lógica da função
-        # ai ao inves de fazer aquilo de fazer requisição eu teria que só inciar um objeto dbserver
         confirmation = db_server.verificar_username(username)
 
         if confirmation == "certo":
@@ -18,12 +17,13 @@ class GameServer:
     # adicionar outros métodos
 
 def start_server():
-    Pyro5.api.Daemon.serveSimple(
-        {
-            GameServer: "emojicards.server" 
-        },
-        ns=True
-    )
-
+    daemon = Pyro5.server.Daemon()
+    ns = Pyro5.api.locate_ns()
+    uri = daemon.register(ServerApp)
+    print(f'server:\n {uri}')
+    ns.register("server", uri)
+    print("Server ready.")
+    daemon.requestLoop() 
+    
 if __name__ == "__main__":
     start_server()
