@@ -1,173 +1,127 @@
-import socket
-import threading
-import os
 import random
 import time
+import threading
+import socket
+import Pyro5.client
+import Pyro5.server
+import Pyro5.core
 
 online_users = {}
 id_partida = -1
-
-db_host = os.getenv('DB_SERVER_HOST', 'localhost')  # db-server
-db_port = int(os.getenv('DB_SERVER_PORT', 6000))   # 6000
-
 partidas = {}
 
 # GERENCIAMENTO DAS REQUISIÇÕES
 def criar_conta(username, senha):
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-            bd_client.connect((db_host, db_port))
-            request = f"verificar_username {username}"
-            bd_client.send(request.encode('utf-8'))
-            response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+    try: 
+        response = database.verificar_username(username)
 
-            if response == 'Username está disponível!':
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                    bd_client.connect((db_host, db_port))
-                    bd_client.send("cartas_disponiveis".encode('utf-8'))
-                    cartas_response = bd_client.recv(1024).decode('utf-8')
+        if response == 'Username está disponível!':
+            cartas_response = database.get_cartas_disponiveis()
 
-                if cartas_response != "Nenhuma Carta Cadastrada":
-                    vetor_nome_emocoes = cartas_response.split(',')
+            if cartas_response != "Nenhuma Carta Cadastrada":
+                vetor_nome_emocoes = cartas_response.split(',')
 
-                    if len(vetor_nome_emocoes) >= 9:
-                        cartas_sorteadas = random.sample(vetor_nome_emocoes, 9)
-                        cartas = ','.join(cartas_sorteadas) 
-                    else:
-                        return "Não há cartas suficientes para criar a conta."
+                if len(vetor_nome_emocoes) >= 9:
+                    cartas_sorteadas = random.sample(vetor_nome_emocoes, 9)
+                    cartas = ','.join(cartas_sorteadas) 
                 else:
-                    return "Nenhuma carta disponível para sortear."
-
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                    bd_client.connect((db_host, db_port))
-                    request = f"adicionar_usuario {username} {senha} {cartas}"  
-                    bd_client.send(request.encode('utf-8'))
-                    response = bd_client.recv(1024).decode('utf-8')
-        
+                    return "Não há cartas suficientes para criar a conta."
+            else:
+                return "Nenhuma carta disponível para sortear."
+            
+            response = database.adicionar_usuario(username,senha)        
         return response
+    
     except Exception as e:
         return f"Erro ao tentar criar conta: {str(e)}"
 
 def login(username, senha, client_ip, client_port):
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-            bd_client.connect((db_host, db_port))
-            request = f"verificar_login {username} {senha}"
-            bd_client.send(request.encode('utf-8'))
-            response = bd_client.recv(1024).decode('utf-8')
+        response = database.verificar_login(username,senha) 
 
-            if response == 'Login Correto!':
-                online_users[username] = {'ip': client_ip, 'porta': client_port}
-
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                    bd_client.connect((db_host, db_port))
-                    request = f"set_status {username} online"
-                    bd_client.send(request.encode('utf-8'))
-                    response = bd_client.recv(1024).decode('utf-8')
+        if response == 'Login Correto!':
+            online_users[username] = {'ip': client_ip, 'porta': client_port}
+            status = 'online'
+            database.set_status(username,status)
+            response = f"{client_port},Login feito com sucesso!"
         
-                    response = f"{client_port},Login feito com sucesso!"
-            
-            else:
-                response = f"-,{response}"
+        else:
+            response = f"-,{response}"
 
         print("usuarios online:",online_users)
         return response
+    
     except Exception as e:
         return f"Erro ao tentar fazer login: {str(e)}"
 
 def logout(username):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"get_status {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+    response = database.get_status(username)
 
-        if response != 'Usuário não encontrado':
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                bd_client.connect((db_host, db_port))
-                request = f"set_status {username} offline"
-                bd_client.send(request.encode('utf-8'))
-                response = bd_client.recv(1024).decode('utf-8')
-                
-                if username in online_users:
-                    del online_users[username]
+    if response != 'Usuário não encontrado':
+        status = 'offline'
+        response = database.set_status(username, status)
+            
+        if username in online_users:
+            del online_users[username]
+
+        response = 'Logout feito com sucesso!'
     
-                response = 'Logout feito com sucesso!'
-
-    print("usuarios online:",online_users)
     return response
 
 def adicionar_baralho(username, baralho):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"get_qtd_baralhos {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
 
-        if response != 'Usuário não encontrado':
-            qtd_baralhos = response
+    response  = database.get_qtd_baralhos(username)
 
-            if qtd_baralhos == 3:
-                response = 'Quantidade máxima de baralhos atingida!'
-                return response
+    if response != 'Usuário não encontrado':
+        qtd_baralhos = int(response)
 
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                bd_client.connect((db_host, db_port))
-                request = f"adicionar_baralho {username} {baralho}"
-                bd_client.send(request.encode('utf-8'))
-                response = bd_client.recv(1024).decode('utf-8')
-
+        if qtd_baralhos == 3:
+            response = 'Quantidade máxima de baralhos atingida!'
+            return response
+            
+        response = database.adicionar_baralho(username, baralho)
+        
     return response
 
 def excluir_baralho(username, indice):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"get_qtd_baralhos {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
 
-        if response != 'Usuário não encontrado':
-            qtd_baralhos = response
+    response = database.get_qtd_baralhos(username)
 
-            if qtd_baralhos == 0:
-                response = 'Não existem baralhos para excluir!'
-                return response
+    if response != 'Usuário não encontrado':
+        qtd_baralhos = response
 
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                bd_client.connect((db_host, db_port))
-                request = f"excluir_baralho {username} {indice}"
-                bd_client.send(request.encode('utf-8'))
-                response = bd_client.recv(1024).decode('utf-8')
+        if qtd_baralhos == 0:
+            response = 'Não existem baralhos para excluir!'
+            return response
 
-                if response == 'Baralho excluído com sucesso':
-                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                        bd_client.connect((db_host, db_port))
-                        request = f"buscar_usuario {username}"
-                        bd_client.send(request.encode('utf-8'))
-                        response = bd_client.recv(1024).decode('utf-8')
+        response = database.excluir_baralho(username, indice)
+        if response == 'Baralho excluído com sucesso':
+                
+            response = database.buscar_usuario(username)
 
-                        response_atualizada = f'excluido,{response}'
+            response_atualizada = f'excluido,{response}'
 
-                        return response_atualizada
+            return response_atualizada
                     
     return response
 
 def adicionar_carta_colecao(username, carta):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"adicionar_carta_na_colecao {username} {carta}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+
+    response = database.adicionar_carta_na_colecao(username, carta)
 
     return response
 
 def exibir_perfil(username):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"buscar_usuario {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
 
+    response = database.buscar_usuario(username)
+    
     if response == "Usuário não encontrado":
         return response
     
@@ -183,25 +137,60 @@ def exibir_perfil(username):
     except Exception as e:
         return f"Erro ao processar a resposta do banco de dados: {str(e)}"
     
-def montar_baralho(username):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"get_colecao {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+def montar_baralho(username):    
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+
+    response = database.get_colecao(username)
 
     return response
 
 def exibir_baralhos(username):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"get_baralhos {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+    response = database.get_baralhos(username)
+
+    return response
+    
+def set_status_jogador(username, status):
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+    response = database.set_status(username,status)
 
     return response
 
+def selecionar_atributo():
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+    emocoes = []
+
+    try:
+        cartas_response = database.get_cartas_disponiveis()
+            
+        if cartas_response != "Nenhuma Carta Cadastrada":
+            emocoes = cartas_response.split(',')
+
+            emocao_aleatoria = random.choice(emocoes)
+            
+            response = database.get_atributos_carta(emocao_aleatoria)
+
+            if response != 'Carta não existe!':
+                dicionario_atributos = eval(response)
+                atributo_aleatorio = random.choice(list(dicionario_atributos.keys()))
+
+                return atributo_aleatorio
+
+    except Exception as e:
+        return f"erro na seleção de atributo: {str(e)}"
+
+def convidar_jogador(username, host, id_partida):
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
+    response = database.buscar_usuario(username)
+
+    if response != 'Usuário não encontrado':
+        response = database.get_status(username)
+
+        if response == 'online':
+            enviar_mensagem(username, f'convite_partida,{host},{id_partida}')
+
 def criar_partida(username_dono, username2, username3):
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
     id = gerar_id_partida()
 
     partidas[id_partida] = {
@@ -273,13 +262,9 @@ def criar_partida(username_dono, username2, username3):
     usernames = [username_dono, username2, username3]
 
     for username in usernames:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-            bd_client.connect((db_host, db_port))
-            request = f"get_baralhos {username}"
-            bd_client.send(request.encode('utf-8'))
-            user_baralho = bd_client.recv(1024).decode('utf-8')
+        user_baralho = database.get_baralhos(username)
 
-            mensagem = f'partida_criada,{id_partida},{user_baralho}'
+        mensagem = f'partida_criada,{id_partida},{user_baralho}'
 
         enviar_mensagem(username, mensagem)
         set_status_jogador(username, status)
@@ -358,10 +343,16 @@ def gerenciar_turno(id_partida):
         fim = time.time()
 
     if confirmacao_usuarios:
-        mensagem = determinar_ganhador_turno(id_partida, atributo_turno, usernames)
+        mensagem = determinar_ganhador_turno(id_partida, atributo_turno, usernames) #=
 
         if(turno_atual == 7):
-            mensagem = determinar_ganhador_partida(id_partida, usernames)
+            # mensagem = f"fim_turno;{vencedor};{novo_atributo};{id_partida};{cartas_jogadas};{partida['pontuacao']}"
+            resultado_turno = mensagem
+            resultado_partida = determinar_ganhador_partida(id_partida, usernames)
+            if resultado_turno.startswith("fim_turno") and resultado_partida.startswith("fim_partida"):
+                _, vencedor_turno, novo_atributo, id_partida, escolhas_cada_jogador, pontuacao = resultado_turno.split(';')
+                _, resultado, carta_adicionada = resultado_partida.split(',')
+                mensagem = f"fim_partida;{vencedor_turno};{novo_atributo};{id_partida};{escolhas_cada_jogador};{pontuacao};{resultado};{carta_adicionada}"
 
     else:
         mensagem = 'Erro ao gerenciar a partida'
@@ -373,6 +364,7 @@ def cartas_jogadas_turno(id_partida, username, carta):
     partidas[id_partida]['cartas_jogadas_turno'][username] = carta
 
 def determinar_ganhador_turno(id_partida, atributo_turno, usernames):
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
     partida = partidas[id_partida]
     atributos_cartas = {}
     cartas_jogadas = partida['cartas_jogadas_turno']
@@ -384,12 +376,8 @@ def determinar_ganhador_turno(id_partida, atributo_turno, usernames):
             mensagem = f"Erro: Carta não encontrada para o usuário {username}"
             continue
 
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                bd_client.connect((db_host, db_port))
-                request = f"atributos_cartas {carta}"
-                bd_client.send(request.encode('utf-8'))
-                atributos_response = bd_client.recv(1024).decode('utf-8')
+        try:       
+            atributos_response = database.get_atributos_carta(carta)
             
             if atributos_response == "Carta não existe!":
                 mensagem = f"Erro: {carta} não existe no banco de dados!"
@@ -427,6 +415,7 @@ def determinar_ganhador_turno(id_partida, atributo_turno, usernames):
     return mensagem
 
 def determinar_ganhador_partida(id_partida, usernames):
+    database = Pyro5.client.Proxy("PYRONAME:db-server")
     info_partida = partidas[id_partida]
     pontuacoes = info_partida['pontuacao']
     max_pontuacao = max(pontuacoes.values())
@@ -437,22 +426,18 @@ def determinar_ganhador_partida(id_partida, usernames):
         carta_ganhas_vencedor = info_partida['cartas_ganhas'][vencedor]
         carta_adicionada = random.choice(carta_ganhas_vencedor)
         
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                bd_client.connect((db_host, db_port))
-                request = f"adicionar_carta_na_colecao {vencedor} {carta_adicionada}"
-                bd_client.send(request.encode('utf-8'))
-                response = bd_client.recv(1024).decode('utf-8')
+        try:            
+            response = database.adicionar_carta_na_colecao(vencedor,carta_adicionada)
                 
-                if response != "Carta adicionada com sucesso!":
-                    raise Exception("Erro ao adicionar carta no banco de dados")
+            if response != "Carta adicionada com sucesso!":
+                raise Exception("Erro ao adicionar carta no banco de dados")
         
         except Exception as e:
             return f"Erro ao adicionar carta no banco de dados: {str(e)}"
 
-        mensagem = f"fim_partida,{vencedor},{carta_adicionada},{partidas[id_partida]['pontuacao']}"
+        mensagem = f"fim_partida,{vencedor},{carta_adicionada}"
     else:
-        mensagem = f"fim_partida,empate,empate,{partidas[id_partida]['pontuacao']}"
+        mensagem = f"fim_partida,empate,empate"
     
     finalizar_partida(id_partida, usernames)
 
@@ -494,15 +479,6 @@ def get_confirmacao_resposta(partida, usernames, resposta_esperada):
 def set_resposta_usuario(id_partida, username, resposta):
     partidas[id_partida]['responses'][username] = resposta
 
-def set_status_jogador(username, status):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"set_status {username} {status}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
-
-    return response
-
 def set_novo_turno(id_partida):
     partida = partidas[id_partida]
     turno = partida['turno_atual'] + 1
@@ -510,35 +486,6 @@ def set_novo_turno(id_partida):
     partida['cartas_jogadas_turno'] = {}
     partida['turno_atual'] = turno
     partida['responses'] = {}
-
-def selecionar_atributo():
-    emocoes = []
-
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-            bd_client.connect((db_host, db_port))
-            bd_client.send("cartas_disponiveis".encode('utf-8'))
-            cartas_response = bd_client.recv(1024).decode('utf-8')
-
-            if cartas_response != "Nenhuma Carta Cadastrada":
-                emocoes = cartas_response.split(',')
-
-                emocao_aleatoria = random.choice(emocoes)
-
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                    bd_client.connect((db_host, db_port))
-                    request = f"atributos_carta {emocao_aleatoria}"
-                    bd_client.send(request.encode('utf-8'))
-                    response = bd_client.recv(1024).decode('utf-8')
-
-                    if response != 'Carta não existe!':
-                        dicionario_atributos = eval(response)
-                        atributo_aleatorio = random.choice(list(dicionario_atributos.keys()))
-
-                        return atributo_aleatorio
-
-    except Exception as e:
-        return f"erro na seleção de atributo: {str(e)}"
 
 def comparar_categorico(valor1, valor2, prioridade):
         if valor1 == valor2:
@@ -597,20 +544,3 @@ def comparar_atributos(atributos_cartas, atributo_turno):
                 vencedor = 'empate'
 
     return vencedor
-
-def convidar_jogador(username, host, id_partida):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-        bd_client.connect((db_host, db_port))
-        request = f"buscar_usuario {username}"
-        bd_client.send(request.encode('utf-8'))
-        response = bd_client.recv(1024).decode('utf-8')
-
-        if response != 'Usuário não encontrado':
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as bd_client:
-                bd_client.connect((db_host, db_port))
-                request = f"get_status {username}"
-                bd_client.send(request.encode('utf-8'))
-                response = bd_client.recv(1024).decode('utf-8')
-
-                if response == 'online':
-                    enviar_mensagem(username, f'convite_partida,{host},{id_partida}')

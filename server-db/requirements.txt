@@ -1,2 +1,2 @@
 sqlalchemy==2.0.31
-Pyro5
+pyro5==5.15

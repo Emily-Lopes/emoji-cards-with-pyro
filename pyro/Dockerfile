@@ -1,8 +1,11 @@
-FROM python:3.10
+FROM python:3.12
 
 RUN apt-get update
+# && apt-get install -y 
+
+# COPY requirements.txt ./
+
+RUN pip install --upgrade pip
 RUN pip install Pyro5
 
-EXPOSE 9090
-
-CMD python3 -m Pyro5.nameserver
+CMD pyro5-ns
