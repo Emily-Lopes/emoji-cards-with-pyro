@@ -1,20 +1,25 @@
-import threading
 from collections import Counter
+import threading
+
 import random
 import json
-from listenServer import ListenServer
 import ast
 
-class Client(ListenServer):
-    def __init__(self, server_ip="127.0.0.1", server_porta=5000):
-        super().__init__(server_ip, server_porta)
+from listenServer import ListenServer
+
+import Pyro5.client
+
+class Client():
+    def __init__(self):
+        self.listenServer = ListenServer()
         self.colecao = None
         self.baralho_escolhido = None
         self.count_turnos = 0
+        self.username = None
+        self.mensagem_servidor = None
 
     def get_username(self):
         return self.username
-
 
     def __verificar_condicao_baralho(self, baralho):
         if len(baralho) != 9:
@@ -25,7 +30,6 @@ class Client(ListenServer):
                 return False, "Deve ter no máximo 3 cartas da mesma emoção"
         return True, "Baralho OK!"
     
-
     def manipular_baralhos(self, baralhos):
         lista_baralho = []
         if baralhos == '':
@@ -36,57 +40,40 @@ class Client(ListenServer):
             baralhos_aux = [baralhos]
         baralhos_aux = baralhos.split('-')
         for baralho in baralhos_aux:
-            #lista_baralho.append(self.__adicionar_caminho_cartas(baralho))
             lista_baralho.append(baralho.split(','))
         return lista_baralho
 
-
+    # GERENCIAMENTO
     def criar_conta(self, username, senha):
         try:
-            client = self.criar_conexao()
-            request = f"criar_conta,{username},{senha}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.criar_conta(username, senha)
             if response == "Usuário adicionado com sucesso!":
-                self.login(username,senha) #já faz o login do usuário
+                self.login(username,senha)
                 return True, response
             return False, response
         except Exception as e:
             print(f"Erro ao criar conta: {str(e)}")
             return False, f"Servidor Indisponível: Reinicie o Sistema!"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
     def login(self, username, senha):
         try:
-            client = self.criar_conexao()
-            request = f"login,{username},{senha}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
-            port, response = response.split(",")
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.login(username, senha)
+            
             if response == "Login feito com sucesso!":
                 self.username = username
-                client_ip, client_port = client.getsockname()
-                client_port = port
-                client.close()
-                listen_thread = threading.Thread(target=self.handle_server, args=(client_ip, client_port))
-                listen_thread.daemon = True
+                listen_thread = threading.Thread(target=self.listenServer.start_listen_server, args=(self))
                 listen_thread.start()
                 return True, response
             return False, response
         except Exception as e:
-            self.fechar_conexao(client)
             print(f"Erro ao realizar login:{str(e)}")
             return False, f"Servidor Indisponível: Reinicie o Sistema!"
 
-
     def logout(self):
         try:
-            client = self.criar_conexao()
-            request = f"logout,{self.username}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
+            response = self.server.logout()
             if response == 'Logout feito com sucesso!':
                 return True, response
             return False, response
@@ -94,17 +81,12 @@ class Client(ListenServer):
         except Exception as e:
             print(f"Erro  ao realizar logout:{str(e)}")
             return False, f"Erro  ao realizar logout:{str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
 
     def exibir_perfil(self):
         try:
-            client = self.criar_conexao()
-            request = f"exibir_perfil,{self.username}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.exibir_perfil(self.username)
             try:
                 data = json.loads(response)
                 if isinstance(data, dict):
@@ -126,9 +108,6 @@ class Client(ListenServer):
         except Exception as e:
             print(f"Erro  ao exibir o perfil do usuário:{str(e)}")
             return False, f"Erro  ao exibir o perfil do usuário:{str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
 
     def adicionar_baralho(self, baralho):
@@ -136,27 +115,20 @@ class Client(ListenServer):
         if not confirmacao:
             return confirmacao, mensagem
         try:
-            client = self.criar_conexao()
             baralho = ",".join(baralho)
-            request = f"adicionar_baralho,{self.username},{baralho}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.adicionar_baralho(self.username, baralho)
             if response == "Baralho adicionado com sucesso":
                 return True, response
             return False, response
         except Exception as e:
             return False, f"Erro  ao adicionar baralho:{str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
 
     def excluir_baralho(self, indice):
         try:
-            client = self.criar_conexao()
-            request = f"excluir_baralho,{self.username},{indice}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.excluir_baralho(self.username, indice)
             if ',' not in response:
                 return False, response
 
@@ -179,18 +151,12 @@ class Client(ListenServer):
         except Exception as e:
             print(f"Erro  ao excluir baralho: {str(e)}")
             return False, f"Erro  ao excluir baralho: {str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
-    #Talvez mudar o nome da função para: exibir_colecao; Mais facil identificar
+    
     def montar_baralho(self):
         try:
-            client = self.criar_conexao()
-            request = f"montar_baralho,{self.username}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
-
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.montar_baralho(self.username)
             if response not in ("Usuário Não Existe", ""):
                 colecao_cartas = response.split(',')
                 return True, colecao_cartas
@@ -198,17 +164,12 @@ class Client(ListenServer):
         except Exception as e:
             print(f"Erro ao buscar colecao para montar baralho:{str(e)}")
             return False, f"Erro ao buscar colecao para baralho:{str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
 
     def exibir_baralhos(self):
         try:
-            client = self.criar_conexao()
-            request = f"exibir_baralhos,{self.username}"
-            self.enviar_dados(client, request)
-            response = self.receber_dados(client)
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.exibir_baralhos(self.username)
             if response not in ("Usuário ainda não tem baralhos", "Usuário não encontrado."):
                 baralhos = self.manipular_baralhos(response)
                 return True, baralhos
@@ -216,26 +177,16 @@ class Client(ListenServer):
         except Exception as e:
             print(f"Erro  ao exibir baralhos:{e}")
             return False, f"Erro  ao exibir baralhos:{str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
 
     def criar_partida(self, username2, username3):
         try:
-            client = self.criar_conexao()
-            request = f"criar_partida,{self.username},{username2},{username3}"
-            self.enviar_dados(client, request)
-            #response = self.receber_dados(client)
-            # if response == "True":
-            #     return True
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            server.criar_partida(self.username, username2, username3)
             return f"Tentando Criar Partida"
         except Exception as e:
             print(f"Erro ao tentar criar partida:{str(e)}")
             return f"Erro ao tentar criar partida:{str(e)}"
-        finally:
-            if client:
-                self.fechar_conexao(client)
 
 
     def gerar_baralho_aleatorio(self):
@@ -255,3 +206,17 @@ class Client(ListenServer):
         
         return resultado
         
+
+    def responder_convite(self, resposta, id_partida):
+        server = Pyro5.server.Proxy("PYRONAME:server")
+        server.resposta_convite(self.username, id_partida, resposta)
+    
+    #avisar que jogador já escolheu o baralho, mas servidor não precisa saber qual foi
+    def responder_baralho_escolhido(self, id_partida):
+        server = Pyro5.server.Proxy("PYRONAME:server")
+        server.escolha_baralho(self.username, id_partida)
+
+    def responder_jogada_turno(self, emocao, id_partida):
+        server = Pyro5.server.Proxy("PYRONAME:server")
+        server.jogada_turno(self.username, emocao, id_partida)
+

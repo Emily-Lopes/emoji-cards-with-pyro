@@ -2,12 +2,12 @@ import threading
 from collections import Counter
 import random
 import json
-from listenServer_copy import ListenServer
+from listenServer import ListenServer
 import ast
 
 class Client(ListenServer):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, server_ip="127.0.0.1", server_porta=5000):
+        super().__init__(server_ip, server_porta)
         self.colecao = None
         self.baralho_escolhido = None
         self.count_turnos = 0
@@ -36,6 +36,7 @@ class Client(ListenServer):
             baralhos_aux = [baralhos]
         baralhos_aux = baralhos.split('-')
         for baralho in baralhos_aux:
+            #lista_baralho.append(self.__adicionar_caminho_cartas(baralho))
             lista_baralho.append(baralho.split(','))
         return lista_baralho
 
@@ -46,7 +47,6 @@ class Client(ListenServer):
             request = f"criar_conta,{username},{senha}"
             self.enviar_dados(client, request)
             response = self.receber_dados(client)
-            response = self.server.criar_conta(username, senha)
             if response == "Usuário adicionado com sucesso!":
                 self.login(username,senha) #já faz o login do usuário
                 return True, response
@@ -54,6 +54,9 @@ class Client(ListenServer):
         except Exception as e:
             print(f"Erro ao criar conta: {str(e)}")
             return False, f"Servidor Indisponível: Reinicie o Sistema!"
+        finally:
+            if client:
+                self.fechar_conexao(client)
 
     def login(self, username, senha):
         try:

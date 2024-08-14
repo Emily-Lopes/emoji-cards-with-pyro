@@ -36,19 +36,19 @@ def criar_conta(username, senha):
     except Exception as e:
         return f"Erro ao tentar criar conta: {str(e)}"
 
-def login(username, senha, client_ip, client_port):
+def login(username, senha):
     database = Pyro5.client.Proxy("PYRONAME:db-server")
     try:
         response = database.verificar_login(username,senha) 
 
         if response == 'Login Correto!':
-            online_users[username] = {'ip': client_ip, 'porta': client_port}
+            online_users[username] = {username}
             status = 'online'
             database.set_status(username,status)
-            response = f"{client_port},Login feito com sucesso!"
+            response = f"Login feito com sucesso!"
         
         else:
-            response = f"-,{response}"
+            response = f"{response}"
 
         print("usuarios online:",online_users)
         return response
@@ -455,11 +455,10 @@ def enviar_mensagem(username, mensagem):
     print(f'tentando mandar: {mensagem}')
 
     if username in online_users:
-        ip = online_users[username]['ip']
-        porta = online_users[username]['porta']
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.connect((ip, porta))
-        client_socket.send(mensagem.encode('utf-8'))
+        cliente = Pyro5.client.Proxy(f"PYRONAME:{username}")
+        
+        cliente.set_mensagem_servidor(mensagem)         
+       
         print(f'mensagem "{mensagem}" enviada com sucesso!')
 
 def get_usuarios_partida(lista_usuarios_partida):

@@ -1,13 +1,14 @@
 import socket
 import threading
-from comunicacao import Comunicacao
+from lidarSocket import ManipularSocket
+import random
 from time import sleep
 
-class ListenServer(Comunicacao):
-    def __init__(self):
+class ListenServer(ManipularSocket):
+    def __init__(self, server_ip="127.0.0.1", server_porta=5000):
         self.username = None
         self.mensagem_servidor = None
-        super().__init__()
+        super().__init__(server_ip, server_porta)
 
 
     def handle_server(self, client_ip, client_port):

@@ -16,4 +16,3 @@ class Comunicacao:
         ns.register("clint", uri)
         print("Ready. Object uri =", uri)
         daemon.requestLoop()
-

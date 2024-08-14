@@ -1,109 +1,64 @@
-from funcionalidades import *
-import socket
-import threading
 import json
+import Pyro5.server
+import Pyro5.core
+import funcionalidades
 
-def handle_client(client_socket):
-    request = client_socket.recv(1024).decode('utf-8')
-    print(f"requisicao recebida pelo servidor de app: {request}")
+@Pyro5.server.expose
+class Server(object):
+    
+    def criar_conta(self, username, senha):
+        return funcionalidades.criar_conta(username, senha)
+    
+    def login(self, username, senha):
+        return funcionalidades.login(username, senha)
+    
+    def logout(self, username):
+        return funcionalidades.logout(username)
+    
+    def adicionar_baralho(self, username, baralho):
+        return funcionalidades.adicionar_baralho(username, baralho)
+    
+    def excluir_baralho(self, username, indice):
+        return funcionalidades.excluir_baralho(username, indice)
+    
+    def adicionar_carta(self, username, carta):
+        return funcionalidades.adicionar_carta_colecao(username, carta)
+    
+    def exibir_perfil(self, username):
+        confirmation = funcionalidades.exibir_perfil(username)
+        if isinstance(confirmation, dict):
+            confirmation = json.dumps(confirmation) 
+        return confirmation
+    
+    def montar_baralho(self, username):
+        return funcionalidades.montar_baralho(username)
 
-    try:
-        if request.startswith('criar_conta'):
-            _, username, senha = request.split(',')
-            confirmation = criar_conta(username, senha)
-            client_socket.send(confirmation.encode('utf-8'))
+    def exibir_baralhos(self, username):
+        return funcionalidades.exibir_baralhos(username)
 
-        if request.startswith('login'):
-            _, username, senha = request.split(',')
-            client_ip, client_port = client_socket.getpeername()
-            confirmation = login(username, senha, client_ip, client_port)
-            client_socket.send(confirmation.encode('utf-8'))
+    def criar_partida(self, username_dono, username2, username3):
+        return funcionalidades.criar_partida(username_dono, username2, username3)
 
-        if request.startswith('logout'):
-            _, username = request.split(',')
-            confirmation = logout(username)
-            client_socket.send(confirmation.encode('utf-8'))
+    def resposta_convite(self, username, id_partida, resposta):
+        funcionalidades.set_resposta_usuario(int(id_partida), username, resposta)
+        
+    def escolha_baralho(self, username, id_partida):
+        resposta = 'preparado'
+        funcionalidades.set_resposta_usuario(int(id_partida), username, resposta)
 
-        if request.startswith('adicionar_baralho'):
-            _, username, baralho = request.split(',', 2)
-            print(f'baralho que recebi: {baralho}')
-            confirmation = adicionar_baralho(username, baralho)
-            client_socket.send(confirmation.encode('utf-8'))
-
-        if request.startswith('excluir_baralho'):
-            _, username, indice = request.split(',')
-            confirmation = excluir_baralho(username, indice)
-            client_socket.send(confirmation.encode('utf-8'))
-
-        if request.startswith('adicionar_carta'):
-            _, username, carta = request.split(',')
-            confirmation = adicionar_carta_colecao(username, carta)
-            client_socket.send(confirmation.encode('utf-8'))
-
-        if request.startswith('exibir_perfil'):
-            _, username = request.split(',')
-            confirmation = exibir_perfil(username)
-            
-            if isinstance(confirmation, dict):
-                confirmation = json.dumps(confirmation) 
-
-            client_socket.send(confirmation.encode('utf-8')) 
-
-        if request.startswith('montar_baralho'):
-            _, username = request.split(',')
-            confirmation = montar_baralho(username)
-            client_socket.send(confirmation.encode('utf-8'))
-
-        if request.startswith('exibir_baralhos'):
-            _, username = request.split(',')
-            confirmation = exibir_baralhos(username)
-            client_socket.send(confirmation.encode('utf-8'))
-
-        if request.startswith('criar_partida'):
-            _, username_dono, username2, username3 = request.split(',')
-            confirmation = criar_partida(username_dono, username2, username3)
-            # client_socket.send(confirmation.encode('utf-8')) # a criar partida retorna a resposta pelo canal aberto com o cliente
-
-        if request.startswith('resposta_convite'):
-            _, username, id_partida, resposta = request.split(',')
-            set_resposta_usuario(int(id_partida), username, resposta)
-
-        if request.startswith('escolha_baralho'):
-            _, username, id_partida = request.split(',')
-            resposta = 'preparado'
-            set_resposta_usuario(int(id_partida), username, resposta)
-
-        if request.startswith('jogada_turno'):
-            _, username, emocao, id_partida = request.split(',')
-            resposta = 'escolheu'
-            set_resposta_usuario(int(id_partida), username, resposta)
-            cartas_jogadas_turno(int(id_partida), username, emocao)
-            
-    except Exception as e:
-        confirmation = f"erro ao lidar com requisicao {request}: {str(e)}"
-        print(confirmation)
-        client_socket.send(confirmation.encode('utf-8'))
-    finally:
-        client_socket.close()
+    def jogada_turno(self, username, emocao, id_partida):
+        resposta = 'escolheu'
+        funcionalidades.set_resposta_usuario(int(id_partida), username, resposta)
+        funcionalidades.cartas_jogadas_turno(int(id_partida), username, emocao)
 
 def start_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    try:
-        server.bind(("0.0.0.0", 5000))
-        server.listen()
-        print("servidor de aplicação ouvindo na porta 5000...")
-    except socket.error as e:
-        print(f"erro ao inicializar o servidor de aplicacao: {str(e)}")
-        return
-    
-
-    while True:
-        client_socket, addr = server.accept()
-        print(f"conexão aceita de {addr}")
-
-        client_handler = threading.Thread(target=handle_client, args=(client_socket,))
-        client_handler.start()
+    daemon = Pyro5.server.Daemon(host="localhost")
+    ns = Pyro5.core.locate_ns()
+    uri = daemon.register(Server)
+    ns.register("server", uri)
+    print("Ready. Object uri =", uri)
+    daemon.requestLoop()
 
 if __name__ == "__main__":
     start_server()
+    
