@@ -146,7 +146,7 @@ class VencedorTurno(arcade.View):
 
     def mudar_tela(self):
         if (self.ultimo == True):
-                self.window.show_view(VencedorPartida(self.cliente, self.vencedor, self.carta_adicionada, self.pontuacao, self.criar_partida_view, self.back_to_login)) 
+                self.window.show_view(VencedorPartida(self.cliente, self.vencedor_partida, self.carta_adicionada, self.pontuacao, self.criar_partida_view, self.back_to_login)) 
         
         else:
             self.window.show_view(self.novo_turno(self.cliente, self.atributo_novo_turno, self.pontuacao, self.id_partida, self.criar_partida_view,self.back_to_login)) 
