@@ -4,8 +4,6 @@ from interface_grafica.telas.login import Login
 from interface_grafica.resources.constantes import LARGURA_TELA, ALTURA_TELA, TITULO
 
 from client import Client
-from listenServer import ListenServer
-
 
 def main():
     # cria uma instância da janela com 800x600 pixels, o título configurado para incluir o nome do cliente, e permite que a janela seja redimensionada.
