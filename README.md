@@ -23,14 +23,19 @@ Siga as etapas abaixo para executar o jogo:
     docker compose build
     ```
 
-    3. Em seguida e nas demais execuções, basta utilizar o comando abaixo para inicar os containers descritos no `docker-compose.yml`:
+    3. 
+    ```bash
+    docker compose up -d rmi-ns
+    ```
+
+    4. Em seguida e nas demais execuções, basta utilizar o comando abaixo para inicar os containers descritos no `docker-compose.yml`:
     ```bash
     docker compose up
     ```
 
-    4. Com isso, o terminal Docker será iniciado. Para encerrá-lo basta fazer `Ctrl + C`
+    5. Com isso, o terminal Docker será iniciado. Para encerrá-lo basta fazer `Ctrl + C`
     
-    5. Para destruir os containers é preciso utilizar o comando:
+    6. Para destruir os containers é preciso utilizar o comando:
     ```bash
     docker compose down
     ```

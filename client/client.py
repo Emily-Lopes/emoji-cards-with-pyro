@@ -5,13 +5,14 @@ import random
 import json
 import ast
 
-from listenServer import ListenServer
-
 import Pyro5.client
 
-class Client():
+import Pyro5.server
+import Pyro5.core
+
+class Client(object):
     def __init__(self):
-        self.listenServer = ListenServer()
+        self.listenServer = None
         self.colecao = None
         self.baralho_escolhido = None
         self.count_turnos = 0
@@ -55,6 +56,33 @@ class Client():
         except Exception as e:
             print(f"Erro ao criar conta: {str(e)}")
             return False, f"Servidor Indisponível: Reinicie o Sistema!"
+    
+    @Pyro5.server.expose
+    def set_mensagem_servidor(self, mensagem):
+        self.mensagem_servidor = mensagem
+        
+    def start_listen_server(self):
+        # daemon = Pyro5.server.Daemon(host="localhost")
+        # ns = Pyro5.core.locate_ns()
+        # # Verifica se o objeto já está registrado e o desregistra
+        # if hasattr(self, self.cliente.username):
+        #     daemon.unregister(self)
+        
+        # uri = daemon.register(self)
+        # ns.register(self.cliente.username, uri)
+        # print(f"Ready {self.cliente.username}. Object uri = {uri}")
+        # daemon.requestLoop()
+        
+        try:
+            daemon = Pyro5.server.Daemon(host="localhost")
+            ns = Pyro5.core.locate_ns()
+            uri = daemon.register(self)
+            ns.register(self.username, uri)
+            print(f"Ready {self.username}. Object uri = {uri}")
+            daemon.requestLoop()
+        except Exception as e:
+            print(f"Erro ao iniciar o servidor de escuta: {str(e)}")
+        
 
     def login(self, username, senha):
         try:
@@ -63,8 +91,10 @@ class Client():
             
             if response == "Login feito com sucesso!":
                 self.username = username
-                listen_thread = threading.Thread(target=self.listenServer.start_listen_server, args=(self))
+                # Inicia o servidor de escuta em uma thread separada
+                listen_thread = threading.Thread(target=self.start_listen_server)
                 listen_thread.start()
+                
                 return True, response
             return False, response
         except Exception as e:
@@ -73,7 +103,9 @@ class Client():
 
     def logout(self):
         try:
-            response = self.server.logout()
+            server = Pyro5.client.Proxy("PYRONAME:server")
+            response = server.logout()
+            
             if response == 'Logout feito com sucesso!':
                 return True, response
             return False, response
@@ -208,15 +240,15 @@ class Client():
         
 
     def responder_convite(self, resposta, id_partida):
-        server = Pyro5.server.Proxy("PYRONAME:server")
+        server = Pyro5.client.Proxy("PYRONAME:server")
         server.resposta_convite(self.username, id_partida, resposta)
     
     #avisar que jogador já escolheu o baralho, mas servidor não precisa saber qual foi
     def responder_baralho_escolhido(self, id_partida):
-        server = Pyro5.server.Proxy("PYRONAME:server")
+        server = Pyro5.client.Proxy("PYRONAME:server")
         server.escolha_baralho(self.username, id_partida)
 
     def responder_jogada_turno(self, emocao, id_partida):
-        server = Pyro5.server.Proxy("PYRONAME:server")
+        server = Pyro5.client.Proxy("PYRONAME:server")
         server.jogada_turno(self.username, emocao, id_partida)
 
