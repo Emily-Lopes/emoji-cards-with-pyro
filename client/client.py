@@ -18,6 +18,9 @@ class Client(object):
         self.count_turnos = 0
         self.username = None
         self.mensagem_servidor = None
+        
+        self.daemon = None  # Guardar a referência do daemon
+
 
     def get_username(self):
         return self.username
@@ -62,24 +65,13 @@ class Client(object):
         self.mensagem_servidor = mensagem
         
     def start_listen_server(self):
-        # daemon = Pyro5.server.Daemon(host="localhost")
-        # ns = Pyro5.core.locate_ns()
-        # # Verifica se o objeto já está registrado e o desregistra
-        # if hasattr(self, self.cliente.username):
-        #     daemon.unregister(self)
-        
-        # uri = daemon.register(self)
-        # ns.register(self.cliente.username, uri)
-        # print(f"Ready {self.cliente.username}. Object uri = {uri}")
-        # daemon.requestLoop()
-        
         try:
-            daemon = Pyro5.server.Daemon(host="localhost")
+            self.daemon = Pyro5.server.Daemon(host="localhost")
             ns = Pyro5.core.locate_ns()
-            uri = daemon.register(self)
+            uri = self.daemon.register(self)
             ns.register(self.username, uri)
             print(f"Ready {self.username}. Object uri = {uri}")
-            daemon.requestLoop()
+            self.daemon.requestLoop()
         except Exception as e:
             print(f"Erro ao iniciar o servidor de escuta: {str(e)}")
         
@@ -104,9 +96,15 @@ class Client(object):
     def logout(self):
         try:
             server = Pyro5.client.Proxy("PYRONAME:server")
-            response = server.logout()
+            response = server.logout(self.username)
+            print(response)
             
             if response == 'Logout feito com sucesso!':
+                # Encerrar o daemon do servidor do cliente
+                if self.daemon:
+                    self.daemon.shutdown()
+                    print(f"Servidor cliente {self.username} encerrado.")
+                    
                 return True, response
             return False, response
         
